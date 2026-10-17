@@ -91,15 +91,17 @@ export const MathBotChat: React.FC = () => {
     setIsCheckingHealth(true);
     setBotStatus('CHECKING');
 
-    const endpointsToTry: string[] = [];
-    const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoctest4.vercel.app/api/mathbot';
-    if (envUrl) {
-      endpointsToTry.push(envUrl.replace(/\/api\/mathbot$/, '') + 'https://vutrutoanhoctest4.vercel.app/api/mathbot/health' + (force ? '?force=1' : ''));
-      endpointsToTry.push(envUrl + (force ? '?force=1' : ''));
+    const endpointsToTry: string[] = [
+      'https://vutrutoanhoctest4.vercel.app/api/mathbot' + (force ? '?force=1' : ''),
+    ];
+    const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL;
+    if (envUrl && envUrl !== 'https://vutrutoanhoctest4.vercel.app/api/mathbot') {
+      endpointsToTry.unshift(envUrl + (force ? '?force=1' : ''));
     }
-    endpointsToTry.push('https://vutrutoanhoctest4.vercel.app/api/mathbot' + (force ? '?force=1' : ''));
-    endpointsToTry.push('https://vutrutoanhoctest4.vercel.app/api/mathbot/health' + (force ? '?force=1' : ''));
-    endpointsToTry.push('https://vutrutoanhoctest4.vercel.app/api/health' + (force ? '?force=1' : ''));
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      endpointsToTry.push('/api/mathbot/health');
+      endpointsToTry.push('/api/health');
+    }
 
     let connected = false;
     let detail = '';
@@ -234,12 +236,17 @@ export const MathBotChat: React.FC = () => {
       let botReply = '';
       let fetchSuccess = false;
 
-      // Adaptive API Endpoint selection: support Vercel serverless, local Express, and fallback
-      const endpointsToTry: string[] = [];
-      const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoctest4.vercel.app/api/mathbot';
-      if (envUrl) endpointsToTry.push(envUrl);
-      endpointsToTry.push('https://vutrutoanhoctest4.vercel.app/api/mathbot');
-      endpointsToTry.push('https://vutrutoanhoctest4.vercel.app/api/mathbot');
+      // Adaptive API Endpoint selection: always target absolute Vercel serverless function
+      const endpointsToTry: string[] = [
+        'https://vutrutoanhoctest4.vercel.app/api/mathbot',
+      ];
+      const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL;
+      if (envUrl && envUrl !== 'https://vutrutoanhoctest4.vercel.app/api/mathbot') {
+        endpointsToTry.unshift(envUrl);
+      }
+      if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+        endpointsToTry.push('/api/mathbot');
+      }
 
       let lastErrorMessage = '';
 
