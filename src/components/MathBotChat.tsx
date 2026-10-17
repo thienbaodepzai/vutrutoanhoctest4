@@ -92,12 +92,12 @@ export const MathBotChat: React.FC = () => {
     setBotStatus('CHECKING');
 
     const endpointsToTry: string[] = [];
-    const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoc.vercel.app/api/mathbot';
+    const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoctest4.vercel.app/api/mathbot';
     if (envUrl) {
       endpointsToTry.push(envUrl.replace(/\/api\/mathbot$/, '') + '/api/mathbot/health' + (force ? '?force=1' : ''));
       endpointsToTry.push(envUrl + (force ? '?force=1' : ''));
     }
-    endpointsToTry.push('https://vutrutoanhoc.vercel.app/api/mathbot' + (force ? '?force=1' : ''));
+    endpointsToTry.push('https://vutrutoanhoctest4.vercel.app/api/mathbot' + (force ? '?force=1' : ''));
     endpointsToTry.push('/api/mathbot/health' + (force ? '?force=1' : ''));
     endpointsToTry.push('/api/health' + (force ? '?force=1' : ''));
 
@@ -236,9 +236,9 @@ export const MathBotChat: React.FC = () => {
 
       // Adaptive API Endpoint selection: support Vercel serverless, local Express, and fallback
       const endpointsToTry: string[] = [];
-      const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoc.vercel.app/api/mathbot';
+      const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoctest4.vercel.app/api/mathbot';
       if (envUrl) endpointsToTry.push(envUrl);
-      endpointsToTry.push('https://vutrutoanhoc.vercel.app/api/mathbot');
+      endpointsToTry.push('https://vutrutoanhoctest4.vercel.app/api/mathbot');
       endpointsToTry.push('/api/mathbot');
 
       let lastErrorMessage = '';
