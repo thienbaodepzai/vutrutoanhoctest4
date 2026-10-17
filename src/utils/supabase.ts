@@ -7,7 +7,7 @@ export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
   supabaseKey &&
   supabaseUrl.startsWith('https://') &&
-  !supabaseUrl.includes('dqwxqqdyesytzlkybmlt') // fallback check if placeholder
+  supabaseUrl.includes('supabase.co')
 );
 
 export const supabase = createClient(

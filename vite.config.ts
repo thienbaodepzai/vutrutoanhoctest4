@@ -10,9 +10,9 @@ export default defineConfig(({ mode }) => {
     ...process.env,
   };
 
-  const supabaseUrl = env.VITE_SUPABASE_URL || 'https://dqwxqqdyesytzlkybmlt.supabase.co';
-  const supabaseKey = env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_VGS5tKUakbo0L8kyHRUjUw_Lw3yfLDI';
-  const mathbotUrl = env.VITE_MATHBOT_URL || 'https://vutrutoanhoctest4.vercel.app/api/mathbot';
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || env.VITE_SUPABASE_URL || 'https://imwoiysafmrntfidbezu.supabase.co';
+  const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_9UhRjCuJFgLclCClG4MCOQ_qLVi2zEI';
+  const mathbotUrl = process.env.VITE_MATHBOT_URL || env.VITE_MATHBOT_URL || 'https://vutrutoanhoctest4.vercel.app/api/mathbot';
 
   return {
     base: '/vutrutoanhoctest4/',
@@ -28,10 +28,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };
