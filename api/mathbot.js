@@ -1,13 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 
-let ai = null;
-function getAIClient() {
-  if (!ai && process.env.GEMINI_API_KEY) {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  }
-  return ai;
-}
-
 const systemPrompt = (grade) => `Bạn là MathBot, gia sư Toán THCS (Lớp ${grade}, sách Kết nối tri thức).
 Quy tắc:
 - Chỉ trả lời câu hỏi về Toán lớp 6-9. Câu ngoài phạm vi thì lịch sự từ chối và gợi ý hỏi về Toán.
@@ -17,7 +9,7 @@ Quy tắc:
 - Không hỏi và không thu thập thông tin cá nhân của học sinh.`;
 
 export default async function handler(req, res) {
-  // 1. Set standard CORS headers
+  // 1. CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -28,21 +20,20 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  // 3. Handle Health Check (GET or query/path health)
+  // 3. Health Check (GET)
   if (req.method === "GET" || req.query?.health || req.url?.includes('/health')) {
-    const client = getAIClient();
     const hasKey = !!process.env.GEMINI_API_KEY;
     if (!hasKey) {
       return res.status(200).json({
         status: "offline",
         online: false,
-        message: "GEMINI_API_KEY chưa được cấu hình trên Vercel. Vui lòng thêm biến môi trường GEMINI_API_KEY trong Project Settings -> Environment Variables trên Vercel."
+        message: "Chưa cấu hình GEMINI_API_KEY trên Vercel. Vui lòng vào Vercel Dashboard -> Settings -> Environment Variables để thêm GEMINI_API_KEY."
       });
     }
     return res.status(200).json({
       status: "online",
       online: true,
-      message: "MathBot AI đang trực tuyến và sẵn sàng kết nối với Google Gemini."
+      message: "MathBot AI đang trực tuyến và sẵn sàng kết nối Google Gemini!"
     });
   }
 
@@ -55,37 +46,46 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Câu hỏi không hợp lệ hoặc vượt quá 2000 ký tự" });
   }
 
-  const client = getAIClient();
-  if (!client) {
-    return res.status(500).json({
-      error: "GEMINI_API_KEY chưa được cấu hình trên Vercel. Vui lòng thêm biến môi trường GEMINI_API_KEY trong Vercel Dashboard."
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(200).json({
+      reply: `⚠️ **MathBot AI chưa được cấu hình GEMINI_API_KEY trên Vercel.**\n\n` +
+        `Để kích hoạt MathBot AI trả lời tự động, bạn hãy làm theo các bước sau:\n` +
+        `1. Truy cập **Vercel Dashboard** (vercel.com) -> chọn dự án của bạn.\n` +
+        `2. Vào **Settings** -> **Environment Variables**.\n` +
+        `3. Thêm biến với tên: \`GEMINI_API_KEY\` và giá trị là khóa API Google Gemini của bạn.\n` +
+        `4. Nhấn **Save** và **Redeploy** lại dự án trên Vercel.\n\n` +
+        `*(Trong lúc chờ cấu hình, em có thể ôn tập lý thuyết, làm bài tập trắc nghiệm và thử thách tại các mục khác của MathVerse nhé!)*`
     });
   }
 
-  const start = history.findIndex((h) => h.role === "user");
-  const past = start === -1 ? [] : history.slice(start);
-  const contents = [
-    ...past.map((h) => ({ role: h.role, parts: [{ text: h.content }] })),
-    {
-      role: "user",
-      parts: [
-        ...(image ? [{ inlineData: { mimeType: image.mimeType, data: image.data } }] : []),
-        { text: message },
-      ],
-    },
-  ];
-
   try {
-    const r = await client.models.generateContent({
+    const ai = new GoogleGenAI({ apiKey });
+    const start = history.findIndex((h) => h.role === "user");
+    const past = start === -1 ? [] : history.slice(start);
+    const contents = [
+      ...past.map((h) => ({ role: h.role, parts: [{ text: h.content }] })),
+      {
+        role: "user",
+        parts: [
+          ...(image ? [{ inlineData: { mimeType: image.mimeType, data: image.data } }] : []),
+          { text: message },
+        ],
+      },
+    ];
+
+    const r = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents,
       config: { systemInstruction: systemPrompt(grade), temperature: 0.3 },
     });
-    return res.status(200).json({ reply: r.text });
+    return res.status(200).json({ reply: r.text || "MathBot đã tiếp nhận câu hỏi của em." });
   } catch (e) {
-    console.error("MathBot Error:", e);
-    return res.status(502).json({
-      error: "MathBot tạm thời quá tải hoặc API Key không hợp lệ. Vui lòng kiểm tra lại GEMINI_API_KEY trên Vercel."
+    console.error("MathBot Gemini Error:", e);
+    return res.status(200).json({
+      reply: `⚠️ **MathBot AI gặp sự cố khi gọi Google Gemini API.**\n\n` +
+        `Chi tiết lỗi: \`${e?.message || 'Lỗi không xác định'}\`.\n\n` +
+        `Em hãy kiểm tra lại \`GEMINI_API_KEY\` trên Vercel hoặc thử lại sau ít phút nhé!`
     });
   }
 }
