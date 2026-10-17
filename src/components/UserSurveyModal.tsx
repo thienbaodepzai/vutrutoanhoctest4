@@ -13,7 +13,13 @@ import {
   Award,
 } from 'lucide-react';
 import { soundManager } from '../utils/soundEffects';
-import { saveUserSurvey, snoozeWeeklySurvey, SURVEY_FEATURES } from '../utils/userSurvey';
+import {
+  saveUserSurvey,
+  snoozeWeeklySurvey,
+  SURVEY_FEATURES,
+  hasUserCompletedSurvey,
+  markUserSurveyCompleted,
+} from '../utils/userSurvey';
 
 interface UserSurveyModalProps {
   isOpen: boolean;
@@ -26,7 +32,7 @@ export const UserSurveyModal: React.FC<UserSurveyModalProps> = ({
   onClose,
   currentWeek = 1,
 }) => {
-  const { user, theme } = useMathVerse();
+  const { user, supabaseUserId, cloudResults, addXp, saveLessonResultToCloud, theme } = useMathVerse();
   const isLight = theme === 'light';
 
   // Câu 1: AI có dễ sử dụng không? (1-5 sao)
@@ -43,10 +49,13 @@ export const UserSurveyModal: React.FC<UserSurveyModalProps> = ({
   // Câu 4: Góp ý thêm
   const [feedbackText, setFeedbackText] = useState<string>('');
 
-  // Trạng thái đã gửi thành công
+  // Trạng thái đã gửi thành công trong phiên hiện tại
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
 
   if (!isOpen) return null;
+
+  const userSurveyKey = supabaseUserId || (user as any)?.id || user?.name || 'default';
+  const alreadyCompleted = hasUserCompletedSurvey(userSurveyKey, cloudResults);
 
   const easeLabels: Record<number, string> = {
     1: 'Rất khó sử dụng',
@@ -66,6 +75,7 @@ export const UserSurveyModal: React.FC<UserSurveyModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (alreadyCompleted || isSubmitted) return;
     soundManager.playClickSound();
 
     saveUserSurvey({
@@ -77,6 +87,29 @@ export const UserSurveyModal: React.FC<UserSurveyModalProps> = ({
       favoriteFeature: selectedFeature,
       feedbackText: feedbackText.trim() || undefined,
     });
+
+    // Đánh dấu người dùng đã hoàn thành khảo sát (chỉ làm 1 lần duy nhất)
+    markUserSurveyCompleted(userSurveyKey);
+
+    // Cộng ngay +30 XP vào tài khoản (1 lần duy nhất) và đồng bộ lên Supabase
+    addXp(30, 'Hoàn thành khảo sát trải nghiệm (+30 XP)');
+    saveLessonResultToCloud({
+      lesson_id: 'user-survey-once',
+      lesson_title: 'Khảo sát trải nghiệm người dùng',
+      grade_level: user?.grade || 6,
+      topic: 'Thống kê',
+      score: 100,
+      correct_count: 0,
+      wrong_count: 0,
+      completion_percent: 100,
+      answers: {
+        type: 'weekly_survey',
+        xpEarned: 30,
+        easeOfUseRating: easeRating,
+        helpfulnessRating: helpRating,
+        favoriteFeature: selectedFeature,
+      },
+    }).catch(() => {});
 
     soundManager.playCorrectSound();
     soundManager.triggerConfetti();
@@ -113,14 +146,14 @@ export const UserSurveyModal: React.FC<UserSurveyModalProps> = ({
 
         {/* Nút đóng */}
         <button
-          onClick={handleSnooze}
+          onClick={onClose}
           type="button"
           className={`absolute top-4 right-4 p-2 rounded-xl transition-colors cursor-pointer ${
             isLight
               ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800'
               : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white'
           }`}
-          title="Để sau"
+          title="Đóng"
         >
           <X className="w-4 h-4" />
         </button>
@@ -149,6 +182,31 @@ export const UserSurveyModal: React.FC<UserSurveyModalProps> = ({
               <span>Em được cộng thưởng +30 XP khảo sát tích cực!</span>
             </div>
           </div>
+        ) : alreadyCompleted ? (
+          <div className="py-10 text-center space-y-4 animate-in zoom-in-95 duration-200">
+            <div className={`w-16 h-16 rounded-full border mx-auto flex items-center justify-center shadow-lg ${
+              isLight
+                ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
+                : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+            }`}>
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+            <h3 className={`text-xl sm:text-2xl font-extrabold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+              Em đã hoàn thành khảo sát! ✅
+            </h3>
+            <p className={`text-xs sm:text-sm max-w-md mx-auto leading-relaxed ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+              Mỗi tài khoản chỉ thực hiện bài khảo sát trải nghiệm <strong>1 lần duy nhất</strong> và em đã nhận đủ phần thưởng <strong>+30 XP</strong>.
+            </p>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-bold shadow-md cursor-pointer transition-all"
+              >
+                Đã hiểu & Đóng
+              </button>
+            </div>
+          </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Header */}
@@ -160,9 +218,8 @@ export const UserSurveyModal: React.FC<UserSurveyModalProps> = ({
                     : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
                 }`}>
                   <Award className={`w-3.5 h-3.5 ${isLight ? 'text-amber-600' : 'text-amber-300'}`} />
-                  <span>Khảo sát sau mỗi tuần học</span>
+                  <span>Khảo sát trải nghiệm (Chỉ làm 1 lần)</span>
                 </span>
-                <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>• Tuần {currentWeek}</span>
               </div>
               <h2 className={`text-xl sm:text-2xl font-extrabold flex items-center gap-2 ${isLight ? 'text-slate-900' : 'text-white'}`}>
                 <span>Đánh giá trải nghiệm học Toán cùng AI</span>

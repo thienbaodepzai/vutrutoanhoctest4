@@ -18,30 +18,73 @@ import {
   CheckCircle2,
   TrendingUp,
   Lock,
+  Trophy,
 } from 'lucide-react';
 import { soundManager } from '../utils/soundEffects';
 
 export const HomeDashboard: React.FC = () => {
-  const { user, setActiveTab, setSelectedLessonId, setActivePromotionExamGrade, setLockedGradeAttempt, theme } = useMathVerse();
+  const {
+    user,
+    cloudResults,
+    cloudProgress,
+    loadingCloud,
+    setActiveTab,
+    setSelectedLessonId,
+    setActivePromotionExamGrade,
+    theme,
+  } = useMathVerse();
 
   if (!user) return null;
 
   const isLight = theme === 'light';
 
-  // Grade-filtered lessons
+  // Grade-filtered lessons synced with Supabase
   const gradeLessons = CURRICULUM_DATA.filter((l) => l.grade === user.grade);
-  const completedInGrade = gradeLessons.filter((l) =>
+  const matchedInGrade = gradeLessons.filter((l) =>
     user.completedLessons.includes(l.id)
   ).length;
-  const progressPercent = gradeLessons.length > 0
-    ? Math.round((completedInGrade / gradeLessons.length) * 100)
-    : 0;
+  const cloudInGrade = cloudResults.filter(
+    (r) =>
+      Number(r.grade_level) === user.grade &&
+      !String(r.lesson_id).startsWith('practice-session-') &&
+      !String(r.lesson_id).startsWith('quiz-exam-') &&
+      !String(r.lesson_id).startsWith('challenge-') &&
+      !String(r.lesson_id).startsWith('survey-') &&
+      !String(r.lesson_id).startsWith('promotion-grade-')
+  ).length;
+  const completedInGrade = Math.min(
+    gradeLessons.length,
+    Math.max(matchedInGrade, cloudInGrade)
+  );
+  const totalCompletedLessons = Math.max(
+    user.completedLessons.length,
+    completedInGrade
+  );
+  const inProgressInGrade = cloudProgress.filter(
+    (p) => p.status === 'in_progress' && Number(p.grade_level || user.grade) === user.grade
+  );
+  const progressPercent =
+    gradeLessons.length > 0
+      ? Math.min(
+          100,
+          Math.round(
+            ((completedInGrade +
+              inProgressInGrade.reduce((acc, p) => acc + Math.min(0.9, (Number(p.progress_percent) || 0) / 100), 0)) /
+              gradeLessons.length) *
+              100
+          )
+        )
+      : 0;
 
   const currentLevel = getUserLevel(user.xp);
 
-  // Recommendations: pick first uncompleted lesson in current grade
-  const nextLesson = gradeLessons.find((l) => !user.completedLessons.includes(l.id)) || gradeLessons[0];
-  const nextGrade = (user.grade < 9 ? (user.grade + 1) : 9) as 6 | 7 | 8 | 9;
+  // Recommendations: pick in-progress lesson first, or first uncompleted lesson in current grade
+  const resumeProgress = inProgressInGrade[0];
+  const nextLesson =
+    (resumeProgress && gradeLessons.find((l) => l.id === resumeProgress.lesson_id)) ||
+    gradeLessons.find((l) => !user.completedLessons.includes(l.id)) ||
+    gradeLessons[0];
+  const nextGrade = (user.grade < 9 ? user.grade + 1 : 9) as 6 | 7 | 8 | 9;
   const isNextGradeUnlocked = isGradeUnlocked(user, nextGrade);
 
   const handleNav = (tab: string) => {
@@ -69,7 +112,7 @@ export const HomeDashboard: React.FC = () => {
       darkColor: 'from-emerald-600/30 to-teal-500/20 text-emerald-400 border-emerald-500/30 hover:border-emerald-400',
       lightColor: 'bg-white hover:bg-emerald-50/50 border-slate-200/90 hover:border-emerald-300 text-emerald-600 shadow-xs hover:shadow-md',
       lightIcon: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-      badge: '6 dạng bài tập',
+      badge: `${user.answeredQuestionsCount} câu đã làm`,
       glow: 'shadow-emerald-500/10',
     },
     {
@@ -95,6 +138,17 @@ export const HomeDashboard: React.FC = () => {
       glow: 'shadow-rose-500/10',
     },
     {
+      id: 'leaderboard',
+      title: '🏆 Bảng xếp hạng',
+      desc: 'Bảng xếp hạng học sinh & thống kê số người tham gia thực tế trên hệ thống',
+      icon: Trophy,
+      darkColor: 'from-amber-500/30 to-yellow-600/20 text-amber-300 border-amber-500/40 hover:border-amber-400',
+      lightColor: 'bg-white hover:bg-amber-50/60 border-slate-200/90 hover:border-amber-300 text-amber-600 shadow-xs hover:shadow-md',
+      lightIcon: 'bg-amber-50 text-amber-600 border-amber-200',
+      badge: 'Dữ liệu thực tế',
+      glow: 'shadow-amber-500/15',
+    },
+    {
       id: 'mathbot',
       title: 'MathBot AI',
       desc: 'Trợ lý gia sư AI giải đáp từng bước bài toán THCS bằng tiếng Việt',
@@ -117,25 +171,14 @@ export const HomeDashboard: React.FC = () => {
       glow: 'shadow-violet-500/10',
     },
     {
-      id: 'achievements',
-      title: 'Thành tích',
-      desc: 'Khám phá 8 huy hiệu danh giá, xem lộ trình thăng cấp Bậc thầy Toán học',
-      icon: Award,
-      darkColor: 'from-yellow-600/30 to-amber-500/20 text-yellow-400 border-yellow-500/30 hover:border-yellow-400',
-      lightColor: 'bg-white hover:bg-amber-50/50 border-slate-200/90 hover:border-amber-300 text-amber-600 shadow-xs hover:shadow-md',
-      lightIcon: 'bg-yellow-50 text-yellow-600 border-yellow-200',
-      badge: `${user.unlockedBadges.length}/8 huy hiệu`,
-      glow: 'shadow-yellow-500/10',
-    },
-    {
       id: 'analytics',
-      title: 'Tiến độ',
-      desc: 'Biểu đồ chi tiết tỉ lệ đúng, chủ đề mạnh và chủ đề cần cải thiện',
+      title: 'Tiến độ & Báo cáo',
+      desc: 'Biểu đồ chi tiết tỉ lệ đúng, lịch sử Supabase và chủ đề cần cải thiện',
       icon: BarChart3,
       darkColor: 'from-cyan-600/30 to-blue-500/20 text-cyan-400 border-cyan-500/30 hover:border-cyan-400',
       lightColor: 'bg-white hover:bg-cyan-50/50 border-slate-200/90 hover:border-cyan-300 text-cyan-600 shadow-xs hover:shadow-md',
       lightIcon: 'bg-cyan-50 text-cyan-600 border-cyan-200',
-      badge: 'Thống kê chi tiết',
+      badge: loadingCloud ? 'Đang đồng bộ...' : 'Đồng bộ Cloud',
       glow: 'shadow-cyan-500/10',
     },
   ];
@@ -282,7 +325,7 @@ export const HomeDashboard: React.FC = () => {
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
             </div>
             <div className="text-2xl font-extrabold text-emerald-600 font-mono">
-              {user.completedLessons.length} bài
+              {totalCompletedLessons} bài
             </div>
             <div className={`text-[11px] mt-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               Lớp {user.grade}: {completedInGrade}/{gradeLessons.length}

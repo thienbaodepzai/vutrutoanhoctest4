@@ -402,23 +402,16 @@ export function isGradeUnlocked(user: UserProfile | null, targetGrade: Grade): b
   if (!user) return targetGrade === 6;
   if (targetGrade === 6) return true;
 
-  // Check if explicitly unlocked in profile
-  if (user.unlockedGrades && user.unlockedGrades.includes(targetGrade)) {
-    return true;
-  }
-
-  // Check prerequisites
+  // Check prerequisites strictly in order 6 -> 7 -> 8 -> 9
   if (targetGrade === 7) {
     return !!user.completedGradeExams?.[6]?.passed;
   }
 
   if (targetGrade === 8) {
-    // Phải trải qua cả 2 kiến thức lớp 6 và 7
     return !!(user.completedGradeExams?.[6]?.passed && user.completedGradeExams?.[7]?.passed);
   }
 
   if (targetGrade === 9) {
-    // Phải trải qua cả 3 kiến thức lớp 6, 7 và 8
     return !!(
       user.completedGradeExams?.[6]?.passed &&
       user.completedGradeExams?.[7]?.passed &&
@@ -430,12 +423,23 @@ export function isGradeUnlocked(user: UserProfile | null, targetGrade: Grade): b
 }
 
 /**
- * Lấy thông tin lý do bị khóa và bài tập cần làm để mở khóa lớp mục tiêu.
+ * Kiểm tra học sinh đã đủ điều kiện bước vào kỳ thi vượt cấp từ lớp `sourceGrade` lên `sourceGrade + 1` hay chưa.
+ * Bắt buộc theo đúng thứ tự: Thi lên Lớp 7 -> Thi lên Lớp 8 -> Thi lên Lớp 9.
+ */
+export function canTakePromotionExam(user: UserProfile | null, sourceGrade: Grade): boolean {
+  if (sourceGrade === 6) return true; // Luôn được phép thi từ Lớp 6 lên Lớp 7
+  if (sourceGrade === 7) return isGradeUnlocked(user, 7); // Phải đậu Lớp 7 mới được thi lên Lớp 8
+  if (sourceGrade === 8) return isGradeUnlocked(user, 8); // Phải đậu Lớp 7 và Lớp 8 mới được thi lên Lớp 9
+  return false;
+}
+
+/**
+ * Lấy thông tin lý do bị khóa và bài tập cần làm theo đúng thứ tự 7 -> 8 -> 9.
  */
 export function getGradeLockInfo(user: UserProfile | null, targetGrade: Grade): {
   isLocked: boolean;
   message: string;
-  requiredExams: { grade: Grade; title: string; isPassed: boolean }[];
+  requiredExams: { grade: Grade; unlocksGrade: Grade; title: string; isPassed: boolean }[];
   nextActionExamGrade: Grade | null;
 } {
   const unlocked = isGradeUnlocked(user, targetGrade);
@@ -453,19 +457,23 @@ export function getGradeLockInfo(user: UserProfile | null, targetGrade: Grade): 
 
   const requiredExams = requiredGrades.map((g) => ({
     grade: g,
-    title: `Bài tập tổng hợp Toán ${g} (Kết nối tri thức)`,
-    isPassed: !!user?.completedGradeExams?.[g]?.passed,
+    unlocksGrade: (g + 1) as Grade,
+    title: `Bước ${g - 5}: Thi lên Lớp ${g + 1} (Bài tập tổng hợp Toán ${g} – Kết nối tri thức)`,
+    isPassed: !!user?.completedGradeExams?.[g]?.passed || isGradeUnlocked(user, (g + 1) as Grade),
   }));
 
   const missing = requiredExams.find((e) => !e.isPassed);
 
   let message = '';
   if (targetGrade === 7) {
-    message = 'Để lên Lớp 7, em cần hoàn thành Bài tập tổng hợp Toán 6 (Bộ sách Kết nối tri thức) đạt từ 70% trở lên.';
+    message =
+      'Để mở khóa Lớp 7, em cần vượt qua kỳ thi lên Lớp 7 (Bài tập tổng hợp Toán 6 – Kết nối tri thức) đạt từ 70% trở lên.';
   } else if (targetGrade === 8) {
-    message = 'Để lên Lớp 8, em phải trải qua 2 kiến thức Toán Lớp 6 và Lớp 7 (Bộ sách Kết nối tri thức).';
+    message =
+      'Quy định thi lên lớp theo đúng thứ tự 7 → 8 → 9: Để thi lên Lớp 8, trước tiên em phải vượt qua kỳ thi lên Lớp 7, sau đó mới thi từ Lớp 7 lên Lớp 8.';
   } else if (targetGrade === 9) {
-    message = 'Để lên Lớp 9, em phải hoàn thành đầy đủ kiến thức Toán Lớp 6, 7 và 8 (Bộ sách Kết nối tri thức).';
+    message =
+      'Quy định thi lên lớp theo đúng thứ tự 7 → 8 → 9: Em đang ở cấp dưới nên không thể nhảy cóc thi thẳng lên Lớp 9. Em cần lần lượt vượt qua: Thi lên Lớp 7 → Thi lên Lớp 8 → Thi lên Lớp 9.';
   }
 
   return {
@@ -475,3 +483,4 @@ export function getGradeLockInfo(user: UserProfile | null, targetGrade: Grade): 
     nextActionExamGrade: missing ? missing.grade : requiredGrades[0],
   };
 }
+

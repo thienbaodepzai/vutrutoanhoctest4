@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Grade, Lesson } from '../types/mathverse';
 import { useMathVerse } from '../context/MathVerseContext';
 import { CURRICULUM_DATA } from '../data/curriculumData';
 import { LessonDetailModal } from './LessonDetailModal';
-import { isGradeUnlocked, PROMOTION_EXAMS } from '../data/promotionExamsData';
+import { isGradeUnlocked, canTakePromotionExam, PROMOTION_EXAMS } from '../data/promotionExamsData';
 import {
   BookOpen,
   CheckCircle2,
@@ -39,6 +39,12 @@ export const CurriculumView: React.FC = () => {
   const [selectedTopicFilter, setSelectedTopicFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeModalLesson, setActiveModalLesson] = useState<Lesson | null>(null);
+
+  useEffect(() => {
+    if (user?.grade && isGradeUnlocked(user, user.grade)) {
+      setActiveGradeTab(user.grade);
+    }
+  }, [user?.grade]);
 
   // Filter lessons by grade
   const gradeLessons = CURRICULUM_DATA.filter((l) => l.grade === activeGradeTab);
@@ -181,31 +187,52 @@ export const CurriculumView: React.FC = () => {
 
           <div className="flex flex-wrap gap-2">
             {PROMOTION_EXAMS.map((exam) => {
-              const isPassed = !!user?.completedGradeExams?.[exam.sourceGrade]?.passed;
+              const isEligibleToTake = canTakePromotionExam(user, exam.sourceGrade);
+              const isPassed = isEligibleToTake && !!user?.completedGradeExams?.[exam.sourceGrade]?.passed;
               return (
                 <button
                   key={exam.id}
                   onClick={() => {
-                    soundManager.playClickSound();
-                    setActivePromotionExamGrade(exam.sourceGrade);
+                    if (isEligibleToTake) {
+                      soundManager.playClickSound();
+                      setActivePromotionExamGrade(exam.sourceGrade);
+                    } else {
+                      soundManager.playWrongSound();
+                      setLockedGradeAttempt(exam.unlocksGrade);
+                    }
                   }}
+                  title={
+                    isEligibleToTake
+                      ? `Làm bài thi từ Lớp ${exam.sourceGrade} lên Lớp ${exam.unlocksGrade}`
+                      : `Cần hoàn thành kỳ thi lên Lớp ${exam.sourceGrade} trước (theo thứ tự 7 → 8 → 9)`
+                  }
                   className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
                     isPassed
                       ? isLight
                         ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
                         : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40'
+                      : isEligibleToTake
+                      ? isLight
+                        ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-600 hover:text-white'
+                        : 'bg-indigo-600/30 border-cyan-400/50 text-cyan-300 hover:bg-indigo-600 hover:text-white'
                       : isLight
-                      ? 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-600 hover:text-white'
-                      : 'bg-indigo-600/30 border-cyan-400/50 text-cyan-300 hover:bg-indigo-600 hover:text-white'
+                      ? 'bg-slate-100 border-slate-300 text-slate-500 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800'
+                      : 'bg-slate-900/80 border-slate-700 text-slate-400 hover:border-amber-500/40 hover:text-amber-300'
                   }`}
                 >
                   {isPassed ? (
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  ) : (
+                  ) : isEligibleToTake ? (
                     <Sparkles className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
+                  ) : (
+                    <Lock className="w-3.5 h-3.5 text-amber-500" />
                   )}
                   <span>Thi lên Lớp {exam.unlocksGrade}</span>
-                  {isPassed && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">(Đã đạt)</span>}
+                  {isPassed && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                      (Đã đạt)
+                    </span>
+                  )}
                 </button>
               );
             })}

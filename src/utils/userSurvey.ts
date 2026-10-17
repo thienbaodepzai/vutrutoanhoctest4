@@ -3,7 +3,59 @@ import { UserSurveyRecord, UserFeedbackStats, UserProfile } from '../types/mathv
 
 const STORAGE_SURVEYS_KEY = 'mathverse_user_surveys_v1';
 const STORAGE_LAST_SURVEY_TIME_KEY = 'mathverse_last_survey_time_v1';
+const STORAGE_SURVEY_COMPLETED_USERS_KEY = 'mathverse_survey_completed_users_v1';
 const SURVEY_UPDATED_EVENT = 'mathverse_survey_updated';
+
+/**
+ * Kiểm tra xem người dùng hiện tại đã làm khảo sát (chỉ làm 1 lần duy nhất) hay chưa
+ */
+export function hasUserCompletedSurvey(
+  userKey?: string | null,
+  cloudResults?: any[]
+): boolean {
+  if (Array.isArray(cloudResults) && cloudResults.length > 0) {
+    const foundOnCloud = cloudResults.some(
+      (r) =>
+        String(r.lesson_id) === 'user-survey-once' ||
+        String(r.lesson_id).startsWith('survey-') ||
+        (r.answers && r.answers.type === 'weekly_survey')
+    );
+    if (foundOnCloud) return true;
+  }
+
+  try {
+    const rawCompleted = localStorage.getItem(STORAGE_SURVEY_COMPLETED_USERS_KEY);
+    if (rawCompleted) {
+      const completedMap = JSON.parse(rawCompleted);
+      const key = (userKey || 'default').trim().toLowerCase();
+      if (completedMap && (completedMap[key] || completedMap['default'])) {
+        return true;
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  return false;
+}
+
+/**
+ * Đánh dấu người dùng đã hoàn thành khảo sát (1 lần duy nhất)
+ */
+export function markUserSurveyCompleted(userKey?: string | null): void {
+  try {
+    const rawCompleted = localStorage.getItem(STORAGE_SURVEY_COMPLETED_USERS_KEY);
+    const completedMap = rawCompleted ? JSON.parse(rawCompleted) : {};
+    const key = (userKey || 'default').trim().toLowerCase();
+    completedMap[key] = true;
+    localStorage.setItem(STORAGE_SURVEY_COMPLETED_USERS_KEY, JSON.stringify(completedMap));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(SURVEY_UPDATED_EVENT));
+    }
+  } catch {
+    // Ignore
+  }
+}
 
 // Danh sách các tính năng chính của hệ thống để học sinh bình chọn
 export const SURVEY_FEATURES = [
@@ -298,17 +350,24 @@ export function useUserFeedbackStats(): UserFeedbackStats {
 }
 
 /**
- * Kiểm tra xem có nên hiển thị popup khảo sát hàng tuần cho học sinh không:
- * - Sau mỗi 7 ngày (hoặc học sinh chưa từng làm khảo sát và đã trả lời tối thiểu 3 câu)
+ * Kiểm tra xem có nên hiển thị popup khảo sát cho học sinh không:
+ * - Mỗi tài khoản chỉ làm khảo sát 1 lần duy nhất.
  */
-export function shouldPromptWeeklySurvey(user: UserProfile | null): boolean {
+export function shouldPromptWeeklySurvey(
+  user: UserProfile | null,
+  userKey?: string | null,
+  cloudResults?: any[]
+): boolean {
   if (!user) return false;
+  if (hasUserCompletedSurvey(userKey || (user as any)?.id || user.name, cloudResults)) {
+    return false;
+  }
 
   try {
     const lastPromptStr = localStorage.getItem(STORAGE_LAST_SURVEY_TIME_KEY);
     const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-    // Nếu đã từng làm/bỏ qua khảo sát, kiểm tra xem đã qua 7 ngày chưa
+    // Nếu đã từng tạm hoãn khảo sát, kiểm tra xem đã qua thời gian hoãn chưa
     if (lastPromptStr) {
       const lastTime = parseInt(lastPromptStr, 10);
       if (!isNaN(lastTime)) {
@@ -317,7 +376,6 @@ export function shouldPromptWeeklySurvey(user: UserProfile | null): boolean {
     }
 
     // Nếu chưa từng làm khảo sát, kiểm tra xem học sinh đã có trải nghiệm học tập nhất định chưa
-    // (ví dụ đã trả lời >= 3 câu hoặc hoàn thành >= 1 bài học)
     if (user.answeredQuestionsCount >= 3 || user.completedLessons.length >= 1) {
       return true;
     }

@@ -3,6 +3,7 @@
   "rewrites": [
     { "source": "/api/mathbot/health", "destination": "/api/mathbot.js" },
     { "source": "/api/health", "destination": "/api/mathbot.js" },
-    { "source": "/api/mathbot", "destination": "/api/mathbot.js" }
+    { "source": "/api/mathbot", "destination": "/api/mathbot.js" },
+    { "source": "/api/leaderboard", "destination": "/api/leaderboard.js" }
   ]
 }

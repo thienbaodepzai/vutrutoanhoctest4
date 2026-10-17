@@ -168,6 +168,18 @@ async function startServer() {
   app.get('/api/mathbot/health', handleHealthCheck);
   app.get('/api/health', handleHealthCheck);
 
+  // Mount Leaderboard API endpoint (/api/leaderboard)
+  app.all('/api/leaderboard', async (req, res) => {
+    try {
+      const mod = await import('./api/leaderboard.js');
+      const leaderboardHandler = mod.default;
+      return await leaderboardHandler(req, res);
+    } catch (err) {
+      console.error('Leaderboard API error:', err);
+      return res.status(500).json({ error: 'Không thể tải dữ liệu' });
+    }
+  });
+
   // API endpoint for MathBot
   app.post('/api/mathbot', async (req, res) => {
     // Basic IP rate limiting

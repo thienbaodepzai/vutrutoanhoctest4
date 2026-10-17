@@ -20,7 +20,9 @@ import {
   useUserFeedbackStats,
   resetUserSurveys,
   deleteUserSurvey,
+  hasUserCompletedSurvey,
 } from '../utils/userSurvey';
+import { useMathVerse } from '../context/MathVerseContext';
 import { soundManager } from '../utils/soundEffects';
 
 interface UserFeedbackAnalyticsViewProps {
@@ -30,9 +32,14 @@ interface UserFeedbackAnalyticsViewProps {
 export const UserFeedbackAnalyticsView: React.FC<UserFeedbackAnalyticsViewProps> = ({
   onOpenSurveyModal,
 }) => {
+  const { user, supabaseUserId, cloudResults } = useMathVerse();
   const stats = useUserFeedbackStats();
   const [filterStar, setFilterStar] = useState<number | 'all'>('all');
   const [confirmReset, setConfirmReset] = useState<boolean>(false);
+  const surveyCompleted = hasUserCompletedSurvey(
+    supabaseUserId || (user as any)?.id || user?.name,
+    cloudResults
+  );
 
   const filteredFeedbacks = stats.records.filter((r) => {
     if (filterStar === 'all') return true;
@@ -69,23 +76,30 @@ export const UserFeedbackAnalyticsView: React.FC<UserFeedbackAnalyticsViewProps>
             Báo cáo Khảo sát & Độ hài lòng Người học
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-            Tổng hợp dữ liệu phản hồi định kỳ hàng tuần từ học sinh về độ dễ dùng của AI, hiệu quả cải thiện năng lực Toán và các tính năng được yêu thích nhất.
+            Tổng hợp dữ liệu phản hồi từ học sinh về độ dễ dùng của AI, hiệu quả cải thiện năng lực Toán và các tính năng được yêu thích nhất.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0">
           {onOpenSurveyModal && (
-            <button
-              type="button"
-              onClick={() => {
-                soundManager.playClickSound();
-                onOpenSurveyModal();
-              }}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Làm khảo sát ngay</span>
-            </button>
+            surveyCompleted ? (
+              <div className="px-4 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Đã làm khảo sát (1/1 lần)</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  soundManager.playClickSound();
+                  onOpenSurveyModal();
+                }}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Làm khảo sát ngay (1 lần)</span>
+              </button>
+            )
           )}
 
           {confirmReset ? (

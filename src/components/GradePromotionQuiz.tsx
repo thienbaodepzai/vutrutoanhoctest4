@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Grade } from '../types/mathverse';
 import { useMathVerse } from '../context/MathVerseContext';
-import { PROMOTION_EXAMS } from '../data/promotionExamsData';
+import { PROMOTION_EXAMS, canTakePromotionExam, getGradeLockInfo } from '../data/promotionExamsData';
 import { formatMathNotation, compareMathAnswers } from '../utils/formatMath';
 import { soundManager } from '../utils/soundEffects';
 import {
@@ -29,9 +29,15 @@ export const GradePromotionQuiz: React.FC<GradePromotionQuizProps> = ({
   sourceGrade,
   onClose,
 }) => {
-  const { unlockGrade, setActiveTab, theme } = useMathVerse();
+  const { user, unlockGrade, setActiveTab, setActivePromotionExamGrade, theme } = useMathVerse();
   const isLight = theme === 'light';
-  const exam = PROMOTION_EXAMS.find((e) => e.sourceGrade === sourceGrade) || PROMOTION_EXAMS[0];
+
+  // Ensure sequential order 7 -> 8 -> 9: if user tries to take an exam for a grade they haven't unlocked yet, route to the first required exam
+  const effectiveSourceGrade: Grade = canTakePromotionExam(user, sourceGrade)
+    ? sourceGrade
+    : (getGradeLockInfo(user, (sourceGrade + 1) as Grade).nextActionExamGrade || 6);
+
+  const exam = PROMOTION_EXAMS.find((e) => e.sourceGrade === effectiveSourceGrade) || PROMOTION_EXAMS[0];
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
@@ -180,15 +186,33 @@ export const GradePromotionQuiz: React.FC<GradePromotionQuizProps> = ({
 
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
             {isPassed ? (
-              <button
-                onClick={() => {
-                  onClose();
-                  setActiveTab('lessons');
-                }}
-                className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-500/25 transition-transform cursor-pointer"
-              >
-                Vào học ngay Lớp {exam.unlocksGrade}
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    onClose();
+                    setActiveTab('lessons');
+                  }}
+                  className="flex-1 py-3.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-emerald-500/25 transition-transform cursor-pointer"
+                >
+                  Vào học ngay Lớp {exam.unlocksGrade}
+                </button>
+                {exam.unlocksGrade < 9 && (
+                  <button
+                    onClick={() => {
+                      soundManager.playClickSound();
+                      setIsFinished(false);
+                      setUserAnswers({});
+                      setCurrentIndex(0);
+                      setTimeLeft(15 * 60);
+                      setActivePromotionExamGrade(exam.unlocksGrade);
+                    }}
+                    className="flex-1 py-3.5 px-4 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-amber-500/25 flex items-center justify-center gap-1.5 transition-transform cursor-pointer"
+                  >
+                    <span>Tiếp tục Thi lên Lớp {exam.unlocksGrade + 1}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                )}
+              </>
             ) : (
               <>
                 <button

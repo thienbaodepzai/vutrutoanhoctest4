@@ -11,6 +11,7 @@ import { MathBotChat } from './components/MathBotChat';
 import { SmartReviewMode } from './components/SmartReviewMode';
 import { AchievementsView } from './components/AchievementsView';
 import { ProgressAnalyticsView } from './components/ProgressAnalyticsView';
+import { LeaderboardView } from './components/LeaderboardView';
 import { SettingsModal } from './components/SettingsModal';
 import { MusicPlayerWidget } from './components/MusicPlayerWidget';
 import { GradePromotionModal } from './components/GradePromotionModal';
@@ -26,6 +27,7 @@ import {
   RotateCcw,
   Award,
   BarChart3,
+  Trophy,
 } from 'lucide-react';
 import { soundManager } from './utils/soundEffects';
 
@@ -53,6 +55,7 @@ const MainAppContent: React.FC = () => {
     { id: 'practice', label: 'Luyện tập', icon: PenTool },
     { id: 'quiz', label: 'Trắc nghiệm', icon: Clock },
     { id: 'challenges', label: 'Thử thách', icon: Target },
+    { id: 'leaderboard', label: '🏆 Bảng xếp hạng', icon: Trophy },
     { id: 'mathbot', label: 'MathBot AI', icon: Bot },
     { id: 'smart_review', label: 'Ôn tập', icon: RotateCcw },
     { id: 'achievements', label: 'Thành tích', icon: Award },
@@ -149,6 +152,7 @@ const MainAppContent: React.FC = () => {
         {activeTab === 'practice' && <PracticeMode />}
         {activeTab === 'quiz' && <QuizExamMode />}
         {activeTab === 'challenges' && <ChallengesMode />}
+        {activeTab === 'leaderboard' && <LeaderboardView />}
         {activeTab === 'mathbot' && <MathBotChat />}
         {activeTab === 'smart_review' && <SmartReviewMode />}
         {activeTab === 'achievements' && <AchievementsView />}

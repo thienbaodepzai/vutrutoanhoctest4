@@ -153,7 +153,9 @@ export const GradePromotionModal: React.FC<GradePromotionModalProps> = ({
               className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-400 hover:to-rose-400 text-white font-bold text-xs shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
             >
               <BookOpen className="w-4 h-4 text-white" />
-              <span className="text-white">Làm bài tổng hợp Toán {lockInfo.nextActionExamGrade} ngay</span>
+              <span className="text-white">
+                Thi lên Lớp {lockInfo.nextActionExamGrade + 1} (Toán {lockInfo.nextActionExamGrade}) ngay
+              </span>
               <ArrowRight className="w-4 h-4 text-white" />
             </button>
           )}
