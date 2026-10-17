@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
 
   const supabaseUrl = env.VITE_SUPABASE_URL || 'https://dqwxqqdyesytzlkybmlt.supabase.co';
   const supabaseKey = env.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_VGS5tKUakbo0L8kyHRUjUw_Lw3yfLDI';
-  const mathbotUrl = env.VITE_MATHBOT_URL || 'https://vutrutoanhoc.vercel.app/api/mathbot';
+  const mathbotUrl = env.VITE_MATHBOT_URL || 'https://vutrutoanhoctest4.vercel.app/api/mathbot';
 
   return {
     base: '/vutrutoanhoctest4/',
