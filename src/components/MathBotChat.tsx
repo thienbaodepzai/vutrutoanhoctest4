@@ -92,13 +92,14 @@ export const MathBotChat: React.FC = () => {
     setBotStatus('CHECKING');
 
     const endpointsToTry: string[] = [];
-    const envUrl = (import.meta as any).env?.VITE_MATHBOT_API_URL;
+    const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoc.vercel.app/api/mathbot';
     if (envUrl) {
       endpointsToTry.push(envUrl.replace(/\/api\/mathbot$/, '') + '/api/mathbot/health' + (force ? '?force=1' : ''));
+      endpointsToTry.push(envUrl + (force ? '?force=1' : ''));
     }
+    endpointsToTry.push('https://vutrutoanhoc.vercel.app/api/mathbot' + (force ? '?force=1' : ''));
     endpointsToTry.push('/api/mathbot/health' + (force ? '?force=1' : ''));
     endpointsToTry.push('/api/health' + (force ? '?force=1' : ''));
-    endpointsToTry.push('https://vutrutoanhoctest3-mathverse-api.vercel.app/api/mathbot/health' + (force ? '?force=1' : ''));
 
     let connected = false;
     let detail = '';
@@ -235,16 +236,10 @@ export const MathBotChat: React.FC = () => {
 
       // Adaptive API Endpoint selection: support Vercel serverless, local Express, and fallback
       const endpointsToTry: string[] = [];
-      const envUrl = (import.meta as any).env?.VITE_MATHBOT_API_URL;
+      const envUrl = (import.meta as any).env?.VITE_MATHBOT_URL || (import.meta as any).env?.VITE_MATHBOT_API_URL || 'https://vutrutoanhoc.vercel.app/api/mathbot';
       if (envUrl) endpointsToTry.push(envUrl);
-
-      if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname.includes('run.app'))) {
-        endpointsToTry.push('/api/mathbot');
-        endpointsToTry.push('https://vutrutoanhoctest3-mathverse-api.vercel.app/api/mathbot');
-      } else {
-        endpointsToTry.push('https://vutrutoanhoctest3-mathverse-api.vercel.app/api/mathbot');
-        endpointsToTry.push('/api/mathbot');
-      }
+      endpointsToTry.push('https://vutrutoanhoc.vercel.app/api/mathbot');
+      endpointsToTry.push('/api/mathbot');
 
       let lastErrorMessage = '';
 

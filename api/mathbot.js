@@ -17,20 +17,37 @@ Quy tắc:
 - Không hỏi và không thu thập thông tin cá nhân của học sinh.`;
 
 export default async function handler(req, res) {
-  // 1. Luôn thiết lập các header CORS chuẩn xác cho mọi phản hồi
-  res.setHeader("Access-Control-Allow-Origin", "https://thienbaodepzai.github.io");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  // 1. Set standard CORS headers
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.setHeader("Vary", "Origin");
 
-  // 2. Xử lý preflight OPTIONS request - trả về HTTP 204 ngay lập tức, không gọi Gemini API
+  // 2. Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
 
-  // 3. Chỉ cho phép phương thức POST
+  // 3. Handle Health Check (GET or query/path health)
+  if (req.method === "GET" || req.query?.health || req.url?.includes('/health')) {
+    const client = getAIClient();
+    const hasKey = !!process.env.GEMINI_API_KEY;
+    if (!hasKey) {
+      return res.status(200).json({
+        status: "offline",
+        online: false,
+        message: "GEMINI_API_KEY chưa được cấu hình trên Vercel. Vui lòng thêm biến môi trường GEMINI_API_KEY trong Project Settings -> Environment Variables trên Vercel."
+      });
+    }
+    return res.status(200).json({
+      status: "online",
+      online: true,
+      message: "MathBot AI đang trực tuyến và sẵn sàng kết nối với Google Gemini."
+    });
+  }
+
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Chỉ hỗ trợ phương thức POST" });
+    return res.status(405).json({ error: "Chỉ hỗ trợ phương thức POST và GET" });
   }
 
   const { message, grade = 6, history = [], image } = req.body || {};
@@ -40,10 +57,11 @@ export default async function handler(req, res) {
 
   const client = getAIClient();
   if (!client) {
-    return res.status(500).json({ error: "GEMINI_API_KEY chưa được cấu hình trên Vercel." });
+    return res.status(500).json({
+      error: "GEMINI_API_KEY chưa được cấu hình trên Vercel. Vui lòng thêm biến môi trường GEMINI_API_KEY trong Vercel Dashboard."
+    });
   }
 
-  // Gemini yêu cầu hội thoại bắt đầu bằng lượt của người dùng
   const start = history.findIndex((h) => h.role === "user");
   const past = start === -1 ? [] : history.slice(start);
   const contents = [
@@ -59,13 +77,15 @@ export default async function handler(req, res) {
 
   try {
     const r = await client.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-2.5-flash",
       contents,
       config: { systemInstruction: systemPrompt(grade), temperature: 0.3 },
     });
     return res.status(200).json({ reply: r.text });
   } catch (e) {
     console.error("MathBot Error:", e);
-    return res.status(502).json({ error: "MathBot tạm thời quá tải, em thử lại sau ít phút nhé." });
+    return res.status(502).json({
+      error: "MathBot tạm thời quá tải hoặc API Key không hợp lệ. Vui lòng kiểm tra lại GEMINI_API_KEY trên Vercel."
+    });
   }
 }
