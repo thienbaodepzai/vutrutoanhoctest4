@@ -5,6 +5,8 @@ import { soundManager } from '../utils/soundEffects';
 import { isGradeUnlocked } from '../data/promotionExamsData';
 import { analyzeStudentCompetency } from '../utils/aiCompetencyAnalytics';
 import { shouldPromptWeeklySurvey } from '../utils/userSurvey';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
+import { saveLearningResult, upsertLearningProgress } from '../utils/supabaseDb';
 
 interface MathVerseContextType {
   user: UserProfile | null;
@@ -22,6 +24,7 @@ interface MathVerseContextType {
   openSurveyModal: () => void;
   closeSurveyModal: () => void;
   login: (name: string, grade: Grade, avatar: string) => void;
+  loginAsGuest: (name: string, grade: Grade, avatar: string) => void;
   logout: () => void;
   addXp: (amount: number, reason?: string) => void;
   completeLesson: (lessonId: string) => void;
@@ -160,6 +163,53 @@ export const MathVerseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   };
 
+  // Supabase session initialization & persistence
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const u = session.user;
+        const meta = u.user_metadata || {};
+        setUser((prev) => {
+          if (prev && prev.name) return prev;
+          const today = new Date().toISOString().split('T')[0];
+          return {
+            ...defaultProfile,
+            name: meta.name || u.email?.split('@')[0] || 'Học sinh',
+            grade: meta.grade || 6,
+            avatar: meta.avatar || '👨‍🚀',
+            unlockedGrades: [6, 7, 8, 9],
+            lastActiveDate: today,
+          };
+        });
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const u = session.user;
+        const meta = u.user_metadata || {};
+        setUser((prev) => {
+          if (prev && prev.name) return prev;
+          const today = new Date().toISOString().split('T')[0];
+          return {
+            ...defaultProfile,
+            name: meta.name || u.email?.split('@')[0] || 'Học sinh',
+            grade: meta.grade || 6,
+            avatar: meta.avatar || '👨‍🚀',
+            unlockedGrades: [6, 7, 8, 9],
+            lastActiveDate: today,
+          };
+        });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'light') {
@@ -237,7 +287,14 @@ export const MathVerseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     soundManager.playTriumphSound();
   };
 
-  const logout = () => {
+  const loginAsGuest = (name: string, grade: Grade, avatar: string) => {
+    login(name, grade, avatar);
+  };
+
+  const logout = async () => {
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut().catch(() => {});
+    }
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
     setActiveTab('dashboard');
@@ -258,7 +315,7 @@ export const MathVerseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
   };
 
-  const completeLesson = (lessonId: string) => {
+  const completeLesson = async (lessonId: string) => {
     if (!user) return;
     const isNew = !user.completedLessons.includes(lessonId);
 
@@ -279,6 +336,41 @@ export const MathVerseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       soundManager.playTriumphSound();
       setRecentXpGained({ amount: 50, reason: 'Hoàn thành bài học' });
       setTimeout(() => setRecentXpGained(null), 3000);
+
+      // Save to Supabase learning_results & learning_progress
+      if (isSupabaseConfigured) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            await saveLearningResult({
+              user_id: session.user.id,
+              lesson_id: lessonId,
+              lesson_title: `Bài học ${lessonId}`,
+              grade_level: user.grade || 6,
+              topic: 'Chương trình THCS',
+              score: 100,
+              correct_count: 5,
+              wrong_count: 0,
+              completion_percent: 100,
+              completed_at: new Date().toISOString(),
+            });
+
+            await upsertLearningProgress({
+              user_id: session.user.id,
+              lesson_id: lessonId,
+              lesson_title: `Bài học ${lessonId}`,
+              grade_level: user.grade || 6,
+              topic: 'Chương trình THCS',
+              current_question: 5,
+              progress_percent: 100,
+              status: 'completed',
+              updated_at: new Date().toISOString(),
+            });
+          }
+        } catch (e) {
+          console.error('Supabase save error:', e);
+        }
+      }
     }
   };
 
@@ -516,6 +608,7 @@ export const MathVerseProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         openSurveyModal,
         closeSurveyModal,
         login,
+        loginAsGuest,
         logout,
         addXp,
         completeLesson,

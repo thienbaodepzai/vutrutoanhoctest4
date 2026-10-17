@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Grade } from '../types/mathverse';
 import { useMathVerse } from '../context/MathVerseContext';
-import { Sparkles, Compass, Rocket, BookOpen, ChevronRight, Sun, Moon } from 'lucide-react';
+import { Sparkles, Rocket, Sun, Moon, LogIn, UserPlus, KeyRound, Mail, Lock, User, CheckCircle2 } from 'lucide-react';
 import { soundManager } from '../utils/soundEffects';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
 
 const AVATARS = [
   { icon: '👨‍🚀', label: 'Phi hành gia' },
@@ -21,23 +22,156 @@ const GRADES: { grade: Grade; title: string; subtitle: string; icon: string; bgG
 ];
 
 export const LoginScreen: React.FC = () => {
-  const { login, theme, toggleTheme } = useMathVerse();
+  const { login, loginAsGuest, theme, toggleTheme } = useMathVerse();
+  const [authMode, setAuthMode] = useState<'signin' | 'signup' | 'forgot' | 'guest'>('signin');
+
+  // Form states
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [selectedGrade, setSelectedGrade] = useState<Grade>(6);
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0].icon);
+
+  // UI feedback
+  const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const isLight = theme === 'light';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setErrorMessage('Vui lòng nhập tên của em để bắt đầu nhé!');
+    if (!email || !password) {
+      setErrorMessage('Vui lòng nhập đầy đủ email và mật khẩu.');
       soundManager.playWrongSound();
       return;
     }
+
+    setLoading(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!isSupabaseConfigured) {
+      // Fallback guest login if Supabase not configured yet
+      setTimeout(() => {
+        setLoading(false);
+        login(email.split('@')[0] || 'Học sinh', 6, '👨‍🚀');
+      }, 500);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+
+      if (data?.user) {
+        soundManager.playCorrectSound();
+        const userName = data.user.user_metadata?.name || email.split('@')[0];
+        const userGrade = data.user.user_metadata?.grade || 6;
+        const userAvatar = data.user.user_metadata?.avatar || '👨‍🚀';
+        login(userName, userGrade, userAvatar);
+      }
+    } catch (err: any) {
+      soundManager.playWrongSound();
+      setErrorMessage(err?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại email hoặc mật khẩu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !email || !password) {
+      setErrorMessage('Vui lòng điền đầy đủ tên, email và mật khẩu.');
+      soundManager.playWrongSound();
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMessage('Mật khẩu phải có ít nhất 6 ký tự.');
+      soundManager.playWrongSound();
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!isSupabaseConfigured) {
+      setTimeout(() => {
+        setLoading(false);
+        login(name.trim(), selectedGrade, selectedAvatar);
+      }, 500);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: name.trim(),
+            grade: selectedGrade,
+            avatar: selectedAvatar,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.user) {
+        soundManager.playCorrectSound();
+        if (data.session) {
+          login(name.trim(), selectedGrade, selectedAvatar);
+        } else {
+          setSuccessMessage('Đăng ký thành công! Vui lòng kiểm tra hộp thư email để xác thực tài khoản trước khi đăng nhập.');
+          setAuthMode('signin');
+        }
+      }
+    } catch (err: any) {
+      soundManager.playWrongSound();
+      setErrorMessage(err?.message || 'Đăng ký thất bại. Email có thể đã được sử dụng.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      setErrorMessage('Vui lòng nhập email đăng ký của bạn.');
+      soundManager.playWrongSound();
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      setSuccessMessage('Đã gửi hướng dẫn khôi phục mật khẩu (Chế độ giả lập).');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname,
+      });
+      if (error) throw error;
+      soundManager.playCorrectSound();
+      setSuccessMessage('Đã gửi liên kết đặt lại mật khẩu đến email của bạn. Vui lòng kiểm tra hộp thư.');
+    } catch (err: any) {
+      soundManager.playWrongSound();
+      setErrorMessage(err?.message || 'Không thể gửi email khôi phục. Vui lòng kiểm tra lại địa chỉ email.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = () => {
     soundManager.playClickSound();
-    login(name.trim(), selectedGrade, selectedAvatar);
+    loginAsGuest(name.trim() || 'Học sinh MathVerse', selectedGrade, selectedAvatar);
   };
 
   return (
@@ -54,40 +188,38 @@ export const LoginScreen: React.FC = () => {
           <>
             <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-200/40 rounded-full blur-[128px]" />
             <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-200/40 rounded-full blur-[128px]" />
-            <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-purple-200/30 rounded-full blur-[96px]" />
           </>
         ) : (
           <>
             <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-[128px] animate-pulse" />
-            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-600/20 rounded-full blur-[128px] animate-pulse delay-1000" />
-            <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-purple-600/15 rounded-full blur-[96px]" />
+            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-cyan-600/20 rounded-full blur-[128px] animate-pulse" />
           </>
         )}
-
-        {/* Floating math symbols in cosmic background */}
         <span className="absolute top-16 left-12 text-cyan-500/20 text-4xl select-none font-mono font-bold animate-bounce">π</span>
         <span className="absolute top-28 right-24 text-indigo-400/20 text-5xl select-none font-mono font-bold">∑</span>
         <span className="absolute bottom-24 left-20 text-purple-400/20 text-5xl select-none font-mono font-bold">√</span>
         <span className="absolute bottom-32 right-16 text-pink-400/20 text-4xl select-none font-mono font-bold">∞</span>
-        <span className="absolute top-2/3 left-1/3 text-emerald-400/15 text-3xl select-none font-mono font-bold">Δ</span>
       </div>
 
       <div
         className={`relative z-10 w-full max-w-xl backdrop-blur-xl border rounded-3xl p-6 sm:p-8 transition-all ${
           isLight
             ? 'bg-white/95 border-slate-200 shadow-2xl shadow-indigo-100 text-slate-800'
-            : 'bg-slate-900/80 border-slate-800/80 shadow-2xl shadow-indigo-950/50 text-slate-100'
+            : 'bg-slate-900/90 border-slate-800 shadow-2xl shadow-indigo-950/50 text-slate-100'
         }`}
       >
         {/* Top bar with theme toggle */}
-        <div className="flex justify-end mb-2">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold border border-indigo-500/20">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Supabase Auth & Cloud Database</span>
+          </div>
           <button
             type="button"
             onClick={() => {
               soundManager.playClickSound();
               toggleTheme();
             }}
-            title={isLight ? 'Chuyển sang Chế độ Tối' : 'Chuyển sang Chế độ Sáng'}
             className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
               isLight
                 ? 'bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-700'
@@ -95,158 +227,461 @@ export const LoginScreen: React.FC = () => {
             }`}
           >
             {isLight ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-indigo-300" />}
-            <span className="text-[11px]">{isLight ? 'Giao diện Sáng' : 'Giao diện Tối'}</span>
+            <span>{isLight ? 'Sáng' : 'Tối'}</span>
           </button>
         </div>
 
         {/* Header Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center p-3.5 bg-gradient-to-tr from-indigo-600 to-cyan-400 rounded-2xl shadow-lg shadow-indigo-500/30 mb-3 transform hover:scale-105 transition-transform duration-300">
-            <Rocket className="w-8 h-8 text-white animate-pulse" />
+          <div className="inline-flex items-center justify-center p-3.5 bg-gradient-to-tr from-indigo-600 to-cyan-400 rounded-2xl shadow-lg shadow-indigo-500/30 mb-2 transform hover:scale-105 transition-transform duration-300">
+            <Rocket className="w-7 h-7 text-white animate-pulse" />
           </div>
           <h1
-            className={`text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${
-              isLight
-                ? 'from-indigo-600 via-purple-600 to-pink-600'
-                : 'from-cyan-300 via-indigo-200 to-purple-400'
+            className={`text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r ${
+              isLight ? 'from-indigo-600 via-purple-600 to-pink-600' : 'from-cyan-300 via-indigo-200 to-purple-400'
             } tracking-tight`}
           >
             MathVerse
           </h1>
-          <p className={`text-sm sm:text-base mt-1 flex items-center justify-center gap-1.5 font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-            <Sparkles className="w-4 h-4 text-cyan-500" />
-            Vũ trụ Toán học THCS • Bộ sách Kết nối tri thức
+          <p className={`text-xs sm:text-sm mt-1 font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+            Nền tảng học Toán THCS thông minh • Kết nối tri thức
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Name Input */}
-          <div>
-            <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-              Tên học sinh
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (errorMessage) setErrorMessage('');
-              }}
-              placeholder="Nhập họ và tên hoặc biệt danh của em..."
-              className={`w-full px-4 py-3.5 border rounded-xl transition-all text-base focus:outline-none focus:ring-2 ${
-                isLight
-                  ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-indigo-500'
-                  : 'bg-slate-950/70 border-slate-700/80 text-white placeholder-slate-500 focus:ring-cyan-500 focus:border-transparent'
-              }`}
-              maxLength={30}
-              autoFocus
-            />
-            {errorMessage && (
-              <p className="text-rose-500 text-xs mt-1.5 flex items-center gap-1 font-medium">
-                ⚠️ {errorMessage}
-              </p>
-            )}
-          </div>
-
-          {/* Avatar Selector */}
-          <div>
-            <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-              Chọn nhân vật đại diện
-            </label>
-            <div className="grid grid-cols-6 gap-2">
-              {AVATARS.map((av) => (
-                <button
-                  type="button"
-                  key={av.label}
-                  onClick={() => {
-                    setSelectedAvatar(av.icon);
-                    soundManager.playClickSound();
-                  }}
-                  className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-2xl transition-all duration-200 cursor-pointer ${
-                    selectedAvatar === av.icon
-                      ? isLight
-                        ? 'bg-indigo-50 border-indigo-500 scale-105 shadow-sm'
-                        : 'bg-indigo-600/30 border-cyan-400 scale-105 shadow-md shadow-cyan-500/20'
-                      : isLight
-                      ? 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-slate-100'
-                      : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40'
-                  }`}
-                  title={av.label}
-                >
-                  <span>{av.icon}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Grade Selector */}
-          <div>
-            <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
-              Chọn lớp học của em
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {GRADES.map((g) => (
-                <button
-                  type="button"
-                  key={g.grade}
-                  onClick={() => {
-                    setSelectedGrade(g.grade);
-                    soundManager.playClickSound();
-                  }}
-                  className={`p-3 rounded-xl border text-left transition-all duration-200 flex flex-col justify-between cursor-pointer ${
-                    selectedGrade === g.grade
-                      ? isLight
-                        ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-400 shadow-sm text-slate-900'
-                        : `bg-gradient-to-b ${g.bgGrad} ring-2 ring-cyan-400 shadow-md`
-                      : isLight
-                      ? 'bg-white border-slate-200 hover:border-slate-300 text-slate-700 hover:bg-slate-50'
-                      : 'bg-slate-950/50 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full mb-1">
-                    <span className="text-xl">{g.icon}</span>
-                    {selectedGrade === g.grade && (
-                      <span className={`w-2 h-2 rounded-full ${isLight ? 'bg-indigo-600' : 'bg-cyan-400 shadow-sm shadow-cyan-400'}`} />
-                    )}
-                  </div>
-                  <div className={`font-bold text-sm ${isLight ? 'text-slate-900' : 'text-white'}`}>{g.title}</div>
-                  <div className={`text-[11px] line-clamp-1 mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>{g.subtitle}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Submit Button */}
+        {/* Mode Navigation Tabs */}
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 mb-6 text-xs font-bold">
           <button
-            type="submit"
-            className="w-full py-4 px-6 bg-gradient-to-r from-indigo-600 via-cyan-600 to-indigo-600 hover:from-indigo-500 hover:via-cyan-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/25 transform hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 flex items-center justify-center gap-2 group cursor-pointer text-base"
+            type="button"
+            onClick={() => {
+              setAuthMode('signin');
+              setErrorMessage('');
+              setSuccessMessage('');
+              soundManager.playClickSound();
+            }}
+            className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              authMode === 'signin'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
           >
-            <span>Bắt đầu học ngay</span>
-            <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Đăng nhập</span>
           </button>
-        </form>
-
-        {/* Footer highlights */}
-        <div className={`mt-6 pt-5 border-t grid grid-cols-3 gap-2 text-center text-[12px] ${isLight ? 'border-slate-200 text-slate-500' : 'border-slate-800/80 text-slate-400'}`}>
-          <div className="flex flex-col items-center gap-1">
-            <span className={`font-semibold flex items-center gap-1 ${isLight ? 'text-indigo-600' : 'text-cyan-400'}`}>
-              <BookOpen className="w-3.5 h-3.5" /> Chuẩn THCS
-            </span>
-            <span>Lớp 6, 7, 8, 9</span>
-          </div>
-          <div className="flex flex-col items-center gap-1">
-            <span className={`font-semibold flex items-center gap-1 ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
-              <Sparkles className="w-3.5 h-3.5" /> MathBot AI
-            </span>
-            <span>Gia sư giải thích</span>
-          </div>
-          <div className="flex flex-col items-center gap-1">
-            <span className={`font-semibold flex items-center gap-1 ${isLight ? 'text-purple-600' : 'text-purple-400'}`}>
-              <Compass className="w-3.5 h-3.5" /> Ôn tập thông minh
-            </span>
-            <span>Tự chữa điểm yếu</span>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode('signup');
+              setErrorMessage('');
+              setSuccessMessage('');
+              soundManager.playClickSound();
+            }}
+            className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              authMode === 'signup'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Đăng ký</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode('guest');
+              setErrorMessage('');
+              setSuccessMessage('');
+              soundManager.playClickSound();
+            }}
+            className={`py-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              authMode === 'guest'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>Khách nhanh</span>
+          </button>
         </div>
+
+        {errorMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
+            <span>⚠️</span>
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+        )}
+
+        {/* SIGN IN FORM */}
+        {authMode === 'signin' && (
+          <form onSubmit={handleSignIn} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-400">
+                Email tài khoản
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nhap_email@example.com"
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-indigo-500'
+                      : 'bg-slate-950/70 border-slate-700 text-white focus:ring-cyan-500'
+                  }`}
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
+                  Mật khẩu
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('forgot')}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                >
+                  Quên mật khẩu?
+                </button>
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-indigo-500'
+                      : 'bg-slate-950/70 border-slate-700 text-white focus:ring-cyan-500'
+                  }`}
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold text-sm shadow-lg shadow-indigo-500/25 hover:opacity-95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {loading ? (
+                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <LogIn className="w-4 h-4" />
+                  <span>Đăng nhập hệ thống</span>
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* SIGN UP FORM */}
+        {authMode === 'signup' && (
+          <form onSubmit={handleSignUp} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-400">
+                Họ và tên học sinh
+              </label>
+              <div className="relative">
+                <User className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nguyễn Văn A"
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-indigo-500'
+                      : 'bg-slate-950/70 border-slate-700 text-white focus:ring-cyan-500'
+                  }`}
+                  required
+                  maxLength={30}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-400">
+                Email đăng ký
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nhap_email@example.com"
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-indigo-500'
+                      : 'bg-slate-950/70 border-slate-700 text-white focus:ring-cyan-500'
+                  }`}
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-400">
+                Mật khẩu (ít nhất 6 ký tự)
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-indigo-500'
+                      : 'bg-slate-950/70 border-slate-700 text-white focus:ring-cyan-500'
+                  }`}
+                  required
+                  minLength={6}
+                />
+              </div>
+            </div>
+
+            {/* Grade Selection */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-2 text-slate-600 dark:text-slate-400">
+                Chọn khối lớp THCS
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {GRADES.map((g) => (
+                  <button
+                    type="button"
+                    key={g.grade}
+                    onClick={() => {
+                      setSelectedGrade(g.grade);
+                      soundManager.playClickSound();
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      selectedGrade === g.grade
+                        ? 'border-indigo-600 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 ring-2 ring-indigo-500/30'
+                        : isLight
+                        ? 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                        : 'border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800/80'
+                    }`}
+                  >
+                    <span className="text-xl">{g.icon}</span>
+                    <div>
+                      <div className="text-xs font-bold">{g.title}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Avatar Selection */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-2 text-slate-600 dark:text-slate-400">
+                Chọn hình đại diện
+              </label>
+              <div className="grid grid-cols-6 gap-2">
+                {AVATARS.map((av) => (
+                  <button
+                    type="button"
+                    key={av.icon}
+                    onClick={() => {
+                      setSelectedAvatar(av.icon);
+                      soundManager.playClickSound();
+                    }}
+                    className={`p-2 rounded-xl text-2xl transition-all cursor-pointer flex items-center justify-center border ${
+                      selectedAvatar === av.icon
+                        ? 'border-indigo-600 bg-indigo-500/20 scale-105 shadow-sm'
+                        : isLight
+                        ? 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                        : 'border-slate-800 bg-slate-900 hover:bg-slate-800'
+                    }`}
+                  >
+                    {av.icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-500/25 hover:opacity-95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {loading ? (
+                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4" />
+                  <span>Đăng ký tài khoản Supabase</span>
+                </>
+              )}
+            </button>
+          </form>
+        )}
+
+        {/* FORGOT PASSWORD FORM */}
+        {authMode === 'forgot' && (
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            <div className="text-center mb-2">
+              <KeyRound className="w-10 h-10 mx-auto text-indigo-500 mb-2" />
+              <h2 className="text-base font-bold">Khôi phục mật khẩu</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Nhập email của bạn để nhận liên kết đặt lại mật khẩu từ Supabase Auth.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-400">
+                Email đăng ký
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="nhap_email@example.com"
+                  className={`w-full pl-10 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-indigo-500'
+                      : 'bg-slate-950/70 border-slate-700 text-white focus:ring-cyan-500'
+                  }`}
+                  required
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-500 text-white font-bold text-sm shadow-lg shadow-indigo-500/25 hover:opacity-95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {loading ? (
+                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span>Gửi liên kết khôi phục</span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAuthMode('signin')}
+              className="w-full text-center text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-2"
+            >
+              Quay lại đăng nhập
+            </button>
+          </form>
+        )}
+
+        {/* GUEST QUICK START MODE */}
+        {authMode === 'guest' && (
+          <div className="space-y-4">
+            <div className="text-center mb-2">
+              <User className="w-10 h-10 mx-auto text-cyan-500 mb-2" />
+              <h2 className="text-base font-bold">Trải nghiệm nhanh (Khách)</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Học tập và làm bài ngay lập tức không cần đăng ký tài khoản Supabase.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-slate-600 dark:text-slate-400">
+                Tên học sinh / Biệt danh
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nhập tên của em..."
+                className={`w-full px-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 ${
+                  isLight
+                    ? 'bg-slate-50 border-slate-300 text-slate-900 focus:bg-white focus:ring-indigo-500'
+                    : 'bg-slate-950/70 border-slate-700 text-white focus:ring-cyan-500'
+                }`}
+                maxLength={30}
+              />
+            </div>
+
+            {/* Grade Selection */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-2 text-slate-600 dark:text-slate-400">
+                Khối lớp THCS
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {GRADES.map((g) => (
+                  <button
+                    type="button"
+                    key={g.grade}
+                    onClick={() => {
+                      setSelectedGrade(g.grade);
+                      soundManager.playClickSound();
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                      selectedGrade === g.grade
+                        ? 'border-indigo-600 bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 ring-2 ring-indigo-500/30'
+                        : isLight
+                        ? 'border-slate-200 bg-slate-50 text-slate-700'
+                        : 'border-slate-800 bg-slate-900 text-slate-300'
+                    }`}
+                  >
+                    <span className="text-xl">{g.icon}</span>
+                    <div className="text-xs font-bold">{g.title}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Avatar Selection */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-2 text-slate-600 dark:text-slate-400">
+                Hình đại diện
+              </label>
+              <div className="grid grid-cols-6 gap-2">
+                {AVATARS.map((av) => (
+                  <button
+                    type="button"
+                    key={av.icon}
+                    onClick={() => {
+                      setSelectedAvatar(av.icon);
+                      soundManager.playClickSound();
+                    }}
+                    className={`p-2 rounded-xl text-2xl transition-all cursor-pointer flex items-center justify-center border ${
+                      selectedAvatar === av.icon
+                        ? 'border-indigo-600 bg-indigo-500/20 scale-105'
+                        : isLight
+                        ? 'border-slate-200 bg-slate-50'
+                        : 'border-slate-800 bg-slate-900'
+                    }`}
+                  >
+                    {av.icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGuestLogin}
+              className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold text-sm shadow-lg shadow-purple-500/25 hover:opacity-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Rocket className="w-4 h-4" />
+              <span>Vào khám phá Vũ trụ Toán học</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
