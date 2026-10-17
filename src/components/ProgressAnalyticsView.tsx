@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useMathVerse } from '../context/MathVerseContext';
 import {
   BarChart3,
@@ -27,11 +27,14 @@ import {
   CheckCheck,
   Star,
   Heart,
+  Cloud,
 } from 'lucide-react';
 import { useAIFeedbackStats, deleteAIFeedbackRecord, resetAIFeedbackData } from '../utils/aiFeedback';
 import { useAICompetencyAnalysis } from '../utils/aiCompetencyAnalytics';
 import { soundManager } from '../utils/soundEffects';
 import { UserFeedbackAnalyticsView } from './UserFeedbackAnalyticsView';
+import { supabase, isSupabaseConfigured } from '../utils/supabase';
+import { fetchUserLearningResults, fetchUserLearningProgress } from '../utils/supabaseDb';
 
 export const ProgressAnalyticsView: React.FC = () => {
   const {
@@ -49,15 +52,53 @@ export const ProgressAnalyticsView: React.FC = () => {
   const [confirmResetAI, setConfirmResetAI] = useState(false);
   const [completedRoadmapSteps, setCompletedRoadmapSteps] = useState<Record<number, boolean>>({});
 
+  const [cloudResults, setCloudResults] = useState<any[]>([]);
+  const [cloudProgress, setCloudProgress] = useState<any[]>([]);
+  const [loadingCloud, setLoadingCloud] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCloud() {
+      if (!isSupabaseConfigured) return;
+      setLoadingCloud(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && isMounted) {
+          const [resResults, resProgress] = await Promise.all([
+            fetchUserLearningResults(session.user.id),
+            fetchUserLearningProgress(session.user.id),
+          ]);
+          setCloudResults(resResults.data || []);
+          setCloudProgress(resProgress.data || []);
+        }
+      } catch (e) {
+        console.error('Error fetching Supabase cloud analytics:', e);
+      } finally {
+        if (isMounted) setLoadingCloud(false);
+      }
+    }
+    loadCloud();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   if (!user) return null;
 
-  const totalAnswered = user.answeredQuestionsCount;
-  const totalCorrect = user.correctAnswersCount;
-  const overallAccuracy = totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0;
+  const hasCloudData = isSupabaseConfigured && cloudResults.length > 0;
+  const supabaseTotalCorrect = cloudResults.reduce((acc, r) => acc + (r.correct_count || 0), 0);
+  const supabaseTotalWrong = cloudResults.reduce((acc, r) => acc + (r.wrong_count || 0), 0);
+  const supabaseTotalAnswered = supabaseTotalCorrect + supabaseTotalWrong;
+  const supabaseAccuracy = supabaseTotalAnswered > 0 ? Math.round((supabaseTotalCorrect / supabaseTotalAnswered) * 100) : 0;
+
+  const totalAnswered = hasCloudData ? supabaseTotalAnswered : user.answeredQuestionsCount;
+  const totalCorrect = hasCloudData ? supabaseTotalCorrect : user.correctAnswersCount;
+  const overallAccuracy = hasCloudData ? supabaseAccuracy : (totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0);
+  const completedLessonsCount = hasCloudData ? cloudResults.length : user.completedLessons.length;
 
   // Approximate study time: each answered question ~ 1.5 mins, each lesson ~ 10 mins
   const estimatedMins = Math.round(
-    user.answeredQuestionsCount * 1.5 + user.completedLessons.length * 10
+    totalAnswered * 1.5 + completedLessonsCount * 10
   );
   const estimatedHours = (estimatedMins / 60).toFixed(1);
 
@@ -255,6 +296,96 @@ export const ProgressAnalyticsView: React.FC = () => {
       {/* DASHBOARD KHẢO SÁT NGƯỜI DÙNG (USER FEEDBACK ANALYTICS) */}
       {(analyticsTab === 'all' || analyticsTab === 'feedback') && (
         <UserFeedbackAnalyticsView onOpenSurveyModal={openSurveyModal} />
+      )}
+
+      {/* SUPABASE CLOUD LEARNING RESULTS & PROGRESS */}
+      {(analyticsTab === 'all' || analyticsTab === 'competency') && (
+        <div className="p-6 sm:p-8 rounded-3xl bg-slate-900 border border-slate-800 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400">
+                <Cloud className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Lịch sử & Tiến độ Supabase Cloud (PostgreSQL)</h3>
+                <p className="text-xs text-slate-400">Đồng bộ trực tiếp từ bảng learning_results & learning_progress</p>
+              </div>
+            </div>
+            {isSupabaseConfigured ? (
+              <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-semibold">
+                Đã kết nối Supabase Cloud
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-400 text-xs font-semibold">
+                Chế độ Cục bộ (Local)
+              </span>
+            )}
+          </div>
+
+          {loadingCloud ? (
+            <div className="text-center py-6 text-slate-400 text-xs">Đang đồng bộ dữ liệu từ Supabase Cloud...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Completed Results */}
+              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-3">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span>Bài học đã hoàn thành ({cloudResults.length})</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                </div>
+                {cloudResults.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic py-2">Chưa có bài học nào được ghi nhận trên Cloud.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-none">
+                    {cloudResults.map((r, idx) => (
+                      <div key={r.id || idx} className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
+                        <div>
+                          <div className="font-bold text-slate-200">{r.lesson_title || r.lesson_id}</div>
+                          <div className="text-[11px] text-slate-400">Đúng {r.correct_count} • Sai {r.wrong_count} • {new Date(r.completed_at).toLocaleDateString('vi-VN')}</div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono font-bold text-[11px]">
+                          {r.score}đ
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* In-Progress Lessons */}
+              <div className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-3">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span>Bài đang học dở ({cloudProgress.filter(p => p.status === 'in_progress').length})</span>
+                  <Clock className="w-4 h-4 text-cyan-400" />
+                </div>
+                {cloudProgress.filter(p => p.status === 'in_progress').length === 0 ? (
+                  <p className="text-xs text-slate-500 italic py-2">Không có bài học nào đang làm dở.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto scrollbar-none">
+                    {cloudProgress.filter(p => p.status === 'in_progress').map((p, idx) => (
+                      <div key={p.id || idx} className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
+                        <div>
+                          <div className="font-bold text-slate-200">{p.lesson_title || p.lesson_id}</div>
+                          <div className="text-[11px] text-slate-400">Tiến độ: {p.progress_percent || 0}% • Câu {p.current_question || 1}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            soundManager.playClickSound();
+                            setSelectedLessonId(p.lesson_id);
+                            setActiveTab('lessons');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer"
+                        >
+                          Học tiếp
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* SECTION: HỆ THỐNG AI PHÂN TÍCH NĂNG LỰC & ĐỀ XUẤT LỘ TRÌNH HỌC TẬP */}
