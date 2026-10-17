@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "master"] # Chạy khi có code mới đẩy lên nhánh main hoặc master
   workflow_dispatch:
 
 permissions:
@@ -25,25 +25,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-      
-      - name: Install dependencies (robust)
-        # Work around intermittent npm "edgesOut" errors by upgrading npm, clearing cache, and reinstalling
-        run: |
-          echo "Current node version: $(node --version)"
-          echo "Current npm version: $(npm --version || echo 'npm not found')"
-          npm install -g npm@latest
-          echo "Upgraded npm version: $(npm --version)"
-          npm cache clean --force
-          rm -rf node_modules package-lock.json || true
-          npm install
-          echo "Install exit: $?"
-          ls -la
-      
+      - name: Update npm
+        run: npm install -g npm@11.19.1
+          
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+        
       - name: Build
         run: npm run build
         env:
+          # Dòng này sẽ lấy API Key từ Bước 1 bạn đã cài để đưa vào web
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      
+          
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
